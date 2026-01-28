@@ -1,0 +1,3 @@
+[submodule "openproject-sync"]
+	path = openproject-sync
+	url = git@github.com:j-cray/openproject-sync.git
