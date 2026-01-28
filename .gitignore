@@ -12,6 +12,10 @@ postgres_data/
 .vscode/
 .idea/
 
+# Environment / Nix
+.direnv/
+result
+
 # OS
 thumbs.db
 
