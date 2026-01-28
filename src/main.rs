@@ -179,19 +179,19 @@ impl Application for AsocialApp {
 
                         Command::perform(
                             async move {
-                                // 1. Create User (if not exists - simplified for MVP)
+                                // 1. Create User
                                 let user_id_row: (Uuid,) = sqlx::query_as("INSERT INTO users (username) VALUES ('default_user') ON CONFLICT (username) DO UPDATE SET username=EXCLUDED.username RETURNING id")
                                     .fetch_one(&pool).await.map_err(|e| e.to_string())?;
                                 let user_id = user_id_row.0;
 
-                                // 2. Create Post
-                                let post_id_row: (Uuid,) = sqlx::query_as("INSERT INTO posts (content, user_id) VALUES ($1, $2) RETURNING id")
+                                // 2. Create Post (Scheduled)
+                                let post_id_row: (Uuid,) = sqlx::query_as("INSERT INTO posts (content, user_id, status) VALUES ($1, $2, 'scheduled') RETURNING id")
                                     .bind(&content)
                                     .bind(user_id)
                                     .fetch_one(&pool).await.map_err(|e| e.to_string())?;
                                 let post_id = post_id_row.0;
 
-                                // 3. Create Platform (Dummy for MVP)
+                                // 3. Create Platform
                                 let platform_id_row: (Uuid,) = sqlx::query_as("INSERT INTO platforms (name, user_id, credentials) VALUES ('dummy_platform', $1, '{}') ON CONFLICT DO NOTHING RETURNING id") 
                                      .bind(user_id)
                                     .fetch_one(&pool).await.map_err(|e| e.to_string())?; 
@@ -206,6 +206,35 @@ impl Application for AsocialApp {
                                 Ok(job_id_row.0)
                             },
                             Message::JobScheduled
+                        )
+                    }
+                    composer::Message::SaveDraftPressed => {
+                        let content = self.composer.content().to_string();
+                        let pool = self.pool.clone();
+                        
+                        println!("Saving draft: {}", content);
+                        self.composer.clear();
+
+                        Command::perform(
+                            async move {
+                                // 1. Create User
+                                let user_id_row: (Uuid,) = sqlx::query_as("INSERT INTO users (username) VALUES ('default_user') ON CONFLICT (username) DO UPDATE SET username=EXCLUDED.username RETURNING id")
+                                    .fetch_one(&pool).await.map_err(|e| e.to_string())?;
+                                let user_id = user_id_row.0;
+
+                                // 2. Create Post (Draft)
+                                let _post_id_row: (Uuid,) = sqlx::query_as("INSERT INTO posts (content, user_id, status) VALUES ($1, $2, 'draft') RETURNING id")
+                                    .bind(&content)
+                                    .bind(user_id)
+                                    .fetch_one(&pool).await.map_err(|e| e.to_string())?;
+
+                                // No job created for drafts
+                                Ok(Uuid::nil()) // Return dummy UUID or handle differently. Uuid::nil() is 0000...
+                            },
+                            |res| match res {
+                                Ok(_) => Message::JobScheduled(Ok(Uuid::nil())), // Re-using message for simplicity, or add new one
+                                Err(e) => Message::JobScheduled(Err(e)),
+                            }
                         )
                     }
                     _ => {

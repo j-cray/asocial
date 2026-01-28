@@ -10,6 +10,7 @@ pub struct Composer {
 pub enum Message {
     ContentChanged(String),
     SchedulePressed,
+    SaveDraftPressed,
 }
 
 impl Composer {
@@ -24,7 +25,7 @@ impl Composer {
             Message::ContentChanged(content) => {
                 self.content = content;
             }
-            Message::SchedulePressed => {
+            Message::SchedulePressed | Message::SaveDraftPressed => {
                 // Main app handles the actual DB insertion for now
             }
         }
@@ -44,9 +45,14 @@ impl Composer {
                 .on_input(Message::ContentChanged)
                 .padding(10)
                 .size(20),
-            button("Schedule Post")
-                .on_press(Message::SchedulePressed)
-                .padding(10)
+            iced::widget::row![
+                button("Save Draft")
+                    .on_press(Message::SaveDraftPressed)
+                    .padding(10),
+                button("Schedule Post")
+                    .on_press(Message::SchedulePressed)
+                    .padding(10)
+            ].spacing(10)
         ]
         .spacing(20)
         .into()
