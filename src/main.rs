@@ -14,6 +14,9 @@ use composer::Composer;
 mod integrations;
 use integrations::mastodon::MastodonClient;
 
+mod theme;
+use theme::{App, Button, Container};
+
 #[tokio::main]
 pub async fn main() -> iced::Result {
     dotenv::dotenv().ok();
@@ -261,58 +264,79 @@ impl Application for AsocialApp {
         let sidebar = column![
             button("Dashboard")
                 .on_press(Message::NavigateTo(Page::Dashboard))
-                .width(Length::Fill),
+                .width(Length::Fill)
+                .style(Button::Menu),
             button("Posts")
                 .on_press(Message::NavigateTo(Page::Posts))
-                .width(Length::Fill),
+                .width(Length::Fill)
+                .style(Button::Menu),
             button("Schedule")
                 .on_press(Message::NavigateTo(Page::Schedule))
-                .width(Length::Fill),
+                .width(Length::Fill)
+                .style(Button::Menu),
             button("Settings")
                 .on_press(Message::NavigateTo(Page::Settings))
-                .width(Length::Fill),
+                .width(Length::Fill)
+                .style(Button::Menu),
         ]
-        .spacing(20)
+        .spacing(10)
         .padding(20)
-        .width(200)
-        .align_items(Alignment::Center);
+        .width(220); // Slightly wider
+
+        let sidebar_container = container(sidebar)
+            .height(Length::Fill)
+            .style(Container::Sidebar);
 
         let content_view: Element<'_, Message> = match self.current_page {
             Page::Dashboard => {
                 let logs: Vec<Element<_>> = self.recent_jobs
                     .iter()
-                    .map(|s| text(s.clone()).into())
+                    .map(|s| {
+                        container(text(s.clone()))
+                            .padding(15)
+                            .width(Length::Fill)
+                            .style(Container::Card)
+                            .into()
+                    })
                     .collect();
                 
                 let logs_col = column(logs).spacing(10);
                 
                 column![
-                    text("Dashboard Content").size(40),
-                    text("Recent Activity:").size(20),
+                    text("Dashboard").size(32).style(theme::ACCENT),
+                    text("Recent Activity").size(18).style(theme::TEXT_SECONDARY),
                     logs_col
                 ].spacing(20).into()
             },
             Page::Posts => {
                 let composer_view = self.composer.view().map(Message::Composer);
                 column![
-                    text("Create New Post").size(40),
+                    text("Create New Post").size(32).style(theme::ACCENT),
                     composer_view
                 ].spacing(20).into()
             },
-            Page::Schedule => text("Schedule View").size(40).into(),
-            Page::Settings => text("Settings").size(40).into(),
+            Page::Schedule => text("Schedule View").size(32).style(theme::ACCENT).into(),
+            Page::Settings => text("Settings").size(32).style(theme::ACCENT).into(),
         };
 
         let content = container(content_view)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x()
-        .center_y();
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(40) // More breathing room
+            .style(Container::Background);
 
-        row![sidebar, content].into()
+        row![sidebar_container, content].into()
     }
 
     fn theme(&self) -> Theme {
         Theme::Dark
+    }
+
+
+
+// ...
+
+    fn style(&self) -> <Self::Theme as iced::application::StyleSheet>::Style {
+        theme::App::Default.into()
     }
 }

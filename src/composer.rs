@@ -1,5 +1,6 @@
-use iced::widget::{button, column, text_input};
 use iced::Element;
+use iced::widget::column;
+use crate::theme::{self, Button, TextInput};
 
 #[derive(Debug, Clone)]
 pub struct Composer {
@@ -41,18 +42,21 @@ impl Composer {
 
     pub fn view(&self) -> Element<'_, Message> {
         column![
-            text_input("What's on your mind?", &self.content)
+            iced::widget::text_input("What's on your mind?", &self.content)
                 .on_input(Message::ContentChanged)
-                .padding(10)
-                .size(20),
+                .padding(15)
+                .size(20)
+                .style(TextInput::Default),
             iced::widget::row![
-                button("Save Draft")
+                iced::widget::button("Save Draft")
                     .on_press(Message::SaveDraftPressed)
-                    .padding(10),
-                button("Schedule Post")
+                    .padding(12)
+                    .style(Button::Secondary),
+                iced::widget::button("Schedule Post")
                     .on_press(Message::SchedulePressed)
-                    .padding(10)
-            ].spacing(10)
+                    .padding(12)
+                    .style(Button::Primary)
+            ].spacing(15)
         ]
         .spacing(20)
         .into()
