@@ -11,6 +11,9 @@ use job_queue::Job;
 mod composer;
 use composer::Composer;
 
+mod integrations;
+use integrations::mastodon::MastodonClient;
+
 #[tokio::main]
 pub async fn main() -> iced::Result {
     dotenv::dotenv().ok();
@@ -46,7 +49,7 @@ enum Page {
 #[derive(Debug, Clone)]
 enum Message {
     NavigateTo(Page),
-    Tick(time::Instant),
+    Tick(()),
     JobPolled(Result<Option<Job>, String>),
     Composer(composer::Message),
     JobScheduled(Result<Uuid, String>),
@@ -91,15 +94,55 @@ impl Application for AsocialApp {
                     Ok(Some(job)) => {
                         let msg = format!("Processing Job: {}", job.id);
                         println!("{}", msg);
-                        self.recent_jobs.push(msg);
+                        self.recent_jobs.push(msg.clone());
                         if self.recent_jobs.len() > 5 {
                             self.recent_jobs.remove(0);
                         }
+
+                        // Dispatch Job
+                        let pool = self.pool.clone();
+                        let job_id = job.id;
+                        
+                        Command::perform(
+                            async move {
+                                let payload = job_queue::fetch_job_details(pool.clone(), job_id).await?;
+                                println!("Payload fetched for platform: {}", payload.platform_name);
+
+                                match payload.platform_name.as_str() {
+                                    "mastodon" | "test_platform" | "dummy_platform" => {
+                                        // TODO: Extract real creds from JSON. For MVP stubbing if empty.
+                                        let base_url = payload.api_url.unwrap_or_else(|| "https://mastodon.social".to_string());
+                                        let token = payload.credentials.0.get("access_token")
+                                            .and_then(|v: &serde_json::Value| v.as_str())
+                                            .unwrap_or("DUMMY_TOKEN")
+                                            .to_string();
+
+                                        let client = MastodonClient::new(base_url, token);
+                                        // In a real scenario, we'd check if token is dummy and fail or log.
+                                        // For MVP, we try to post. If it fails (401), we log it.
+                                        match client.post_status(&payload.content).await {
+                                            Ok(_) => Ok("Posted to Mastodon".to_string()),
+                                            Err(e) => Err(format!("Mastodon Error: {}", e))
+                                        }
+                                    },
+                                    _ => Err(format!("Unknown platform: {}", payload.platform_name))
+                                }
+                            },
+                            |res| {
+                                match res {
+                                    Ok(s) => println!("Job Success: {}", s),
+                                    Err(e) => println!("Job Failed: {}", e),
+                                }
+                                Message::Tick(())
+                            } 
+                        )
                     }
-                    Ok(None) => {},
-                    Err(e) => println!("Job polling error: {}", e),
+                    Ok(None) => Command::none(),
+                    Err(e) => {
+                        println!("Job polling error: {}", e);
+                        Command::none()
+                    }
                 }
-                Command::none()
             }
             Message::Composer(msg) => {
                 match msg {
@@ -125,17 +168,9 @@ impl Application for AsocialApp {
                                 let post_id = post_id_row.0;
 
                                 // 3. Create Platform (Dummy for MVP)
-                                let platform_id_row: (Uuid,) = sqlx::query_as("INSERT INTO platforms (name, user_id, credentials) VALUES ('dummy_platform', $1, '{}') ON CONFLICT DO NOTHING RETURNING id") // ON CONFLICT logic might be tricky without unique constraint on name, simplifying: assuming it exists or just create new
-                                    // Actually, let's just create one for now.
+                                let platform_id_row: (Uuid,) = sqlx::query_as("INSERT INTO platforms (name, user_id, credentials) VALUES ('dummy_platform', $1, '{}') ON CONFLICT DO NOTHING RETURNING id") 
                                      .bind(user_id)
                                     .fetch_one(&pool).await.map_err(|e| e.to_string())?; 
-                                // SQLX fetch_one might fail if ON CONFLICT DO NOTHING returns nothing. 
-                                // Let's simplify: Just insert every time or use a known ID?
-                                // Better: INSERT ... RETURNING id. If we want reuse, we need a unique key. 
-                                // Let's just Insert a new 'dummy' platform for every post for this MVP task to ensure it Works.
-                                // Wait, the previous seed used 'test_platform'. Let's try to reuse that if possible, or just make a new one.
-                                // For MVP robustness, let's just make a new one.
-                                
                                 let platform_id = platform_id_row.0;
 
                                 // 4. Create Job
@@ -166,7 +201,7 @@ impl Application for AsocialApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        time::every(Duration::from_secs(5)).map(Message::Tick)
+        time::every(Duration::from_secs(5)).map(|_| Message::Tick(()))
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -228,5 +263,3 @@ impl Application for AsocialApp {
         Theme::Dark
     }
 }
-
-
