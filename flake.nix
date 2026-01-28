@@ -11,20 +11,6 @@
       let
         pkgs = import nixpkgs { inherit system; };
         
-        # macOS specific frameworks
-        darwinFrameworks = with pkgs.darwin.apple_sdk.frameworks; [
-          ApplicationServices
-          CoreFoundation
-          CoreGraphics
-          CoreText
-          Foundation
-          IOKit
-          Metal
-          QuartzCore
-          Security
-          SystemConfiguration
-          pkgs.libiconv
-        ];
       in
       {
         devShells.default = pkgs.mkShell {
@@ -43,7 +29,8 @@
             # Libraries
             openssl
             pkg-config
-          ] ++ (if pkgs.stdenv.isDarwin then darwinFrameworks else []);
+            libiconv
+          ];
 
           shellHook = ''
             export RUST_BACKTRACE=1
