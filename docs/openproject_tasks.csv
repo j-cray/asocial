@@ -1,4 +1,4 @@
-Type,Subject,Description,Priority,Est. Hours,Phase
+Type,Subject,Description,Priority,EstHours,Phase
 Phase,Phase 0: Foundation & Setup,Initial repo setup and decisions,High,10,0
 Task,Initialize Git Repository,"Git init, .gitignore, main branch setup",High,1,0
 Task,Setup: Rust Toolchain,"Install rustup, cargo, and Iced dependencies",High,2,0
