@@ -1,0 +1,16 @@
+target/
+**/*.rs.bk
+db.sqlite3
+.env
+.DS_Store
+*.swp
+
+# Docker
+postgres_data/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+thumbs.db

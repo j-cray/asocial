@@ -1,0 +1,61 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: asocial
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: asocial
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Install SQLx CLI
+      run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
+
+    - name: Run Migrations
+      run: sqlx migrate run
+      env:
+        DATABASE_URL: postgres://asocial:password@localhost:5432/asocial
+
+    - name: Check Formatting
+      run: cargo fmt -- --check
+
+    - name: Run Clippy
+      run: cargo clippy -- -D warnings
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Run Tests
+      # Assuming tests might need DB
+      run: cargo test --verbose
+      env:
+        DATABASE_URL: postgres://asocial:password@localhost:5432/asocial
