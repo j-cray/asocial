@@ -110,6 +110,8 @@ impl Application for AsocialApp {
 
                                 match payload.platform_name.as_str() {
                                     "mastodon" | "test_platform" | "dummy_platform" => {
+                                        // ... existing mastodon logic ...
+                                        // (truncated for brevity in actual replace, I will keep context)
                                         // TODO: Extract real creds from JSON. For MVP stubbing if empty.
                                         let base_url = payload.api_url.unwrap_or_else(|| "https://mastodon.social".to_string());
                                         let token = payload.credentials.0.get("access_token")
@@ -123,6 +125,28 @@ impl Application for AsocialApp {
                                         match client.post_status(&payload.content).await {
                                             Ok(_) => Ok("Posted to Mastodon".to_string()),
                                             Err(e) => Err(format!("Mastodon Error: {}", e))
+                                        }
+                                    },
+                                    "bluesky" => {
+                                        let identifier = payload.credentials.0.get("identifier")
+                                            .and_then(|v: &serde_json::Value| v.as_str())
+                                            .unwrap_or("DUMMY_USER")
+                                            .to_string();
+                                        let password = payload.credentials.0.get("password")
+                                            .and_then(|v: &serde_json::Value| v.as_str())
+                                            .unwrap_or("DUMMY_PASS")
+                                            .to_string();
+                                        
+                                        let mut client = integrations::bluesky::BlueskyClient::new(identifier, password);
+                                        // Try login first
+                                        match client.login().await {
+                                            Ok(_) => {
+                                                match client.post_record(&payload.content).await {
+                                                    Ok(_) => Ok("Posted to Bluesky".to_string()),
+                                                    Err(e) => Err(format!("Bluesky Post Error: {}", e))
+                                                }
+                                            },
+                                            Err(e) => Err(format!("Bluesky Login Error: {}", e))
                                         }
                                     },
                                     _ => Err(format!("Unknown platform: {}", payload.platform_name))
