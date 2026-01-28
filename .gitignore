@@ -14,3 +14,8 @@ postgres_data/
 
 # OS
 thumbs.db
+
+
+# Added by cargo
+
+/target
