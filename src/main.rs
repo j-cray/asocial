@@ -1,7 +1,11 @@
 use iced::widget::{button, column, container, row, text};
-use iced::{Alignment, Application, Command, Element, Length, Settings, Theme};
+use iced::{time, Alignment, Application, Command, Element, Length, Settings, Subscription, Theme};
 use sqlx::postgres::PgPool;
 use std::env;
+use std::time::Duration;
+
+mod job_queue;
+use job_queue::Job;
 
 #[tokio::main]
 pub async fn main() -> iced::Result {
@@ -23,6 +27,7 @@ pub async fn main() -> iced::Result {
 struct AsocialApp {
     pool: PgPool,
     current_page: Page,
+    recent_jobs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +41,8 @@ enum Page {
 #[derive(Debug, Clone)]
 enum Message {
     NavigateTo(Page),
+    Tick(time::Instant),
+    JobPolled(Result<Option<Job>, String>),
 }
 
 impl Application for AsocialApp {
@@ -49,6 +56,7 @@ impl Application for AsocialApp {
             Self {
                 pool,
                 current_page: Page::Dashboard,
+                recent_jobs: Vec::new(),
             },
             Command::none(),
         )
@@ -64,7 +72,38 @@ impl Application for AsocialApp {
                 self.current_page = page;
                 Command::none()
             }
+            Message::Tick(_) => {
+                // Poll for a job every tick
+                Command::perform(
+                    job_queue::poll_jobs(self.pool.clone()),
+                    Message::JobPolled,
+                )
+            }
+            Message::JobPolled(result) => {
+                match result {
+                    Ok(Some(job)) => {
+                        let msg = format!("Processing Job: {}", job.id);
+                        println!("{}", msg);
+                        self.recent_jobs.push(msg);
+                        // Keep only last 5 logs
+                        if self.recent_jobs.len() > 5 {
+                            self.recent_jobs.remove(0);
+                        }
+                    }
+                    Ok(None) => {
+                        // No jobs available, silent
+                    }
+                    Err(e) => {
+                        println!("Job polling error: {}", e);
+                    }
+                }
+                Command::none()
+            }
         }
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        time::every(Duration::from_secs(5)).map(Message::Tick)
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -87,12 +126,27 @@ impl Application for AsocialApp {
         .width(200)
         .align_items(Alignment::Center);
 
-        let content = container(match self.current_page {
-            Page::Dashboard => text("Dashboard Content").size(40),
-            Page::Posts => text("Posts Management").size(40),
-            Page::Schedule => text("Schedule View").size(40),
-            Page::Settings => text("Settings").size(40),
-        })
+        let content_view: Element<'_, Message> = match self.current_page {
+            Page::Dashboard => {
+                let logs: Vec<Element<_>> = self.recent_jobs
+                    .iter()
+                    .map(|s| text(s.clone()).into())
+                    .collect();
+                
+                let logs_col = column(logs).spacing(10);
+                
+                column![
+                    text("Dashboard Content").size(40),
+                    text("Recent Activity:").size(20),
+                    logs_col
+                ].spacing(20).into()
+            },
+            Page::Posts => text("Posts Management").size(40).into(),
+            Page::Schedule => text("Schedule View").size(40).into(),
+            Page::Settings => text("Settings").size(40).into(),
+        };
+
+        let content = container(content_view)
         .width(Length::Fill)
         .height(Length::Fill)
         .center_x()
@@ -105,3 +159,4 @@ impl Application for AsocialApp {
         Theme::Dark
     }
 }
+
