@@ -1,11 +1,27 @@
-use iced::widget::{button, column, container, row, text, Container};
-use iced::{Alignment, Element, Length, Sandbox, Settings, Theme};
+use iced::widget::{button, column, container, row, text};
+use iced::{Alignment, Application, Command, Element, Length, Settings, Theme};
+use sqlx::postgres::PgPool;
+use std::env;
 
-pub fn main() -> iced::Result {
-    AsocialApp::run(Settings::default())
+#[tokio::main]
+pub async fn main() -> iced::Result {
+    dotenv::dotenv().ok();
+
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    println!("Connecting to database: {}", database_url);
+    
+    let pool = PgPool::connect(&database_url)
+        .await
+        .expect("Failed to connect to database");
+
+    println!("Database connection established.");
+
+    AsocialApp::run(Settings::with_flags(pool))
 }
 
 struct AsocialApp {
+    pool: PgPool,
     current_page: Page,
 }
 
@@ -22,23 +38,31 @@ enum Message {
     NavigateTo(Page),
 }
 
-impl Sandbox for AsocialApp {
+impl Application for AsocialApp {
+    type Executor = iced::executor::Default;
     type Message = Message;
+    type Theme = Theme;
+    type Flags = PgPool;
 
-    fn new() -> Self {
-        Self {
-            current_page: Page::Dashboard,
-        }
+    fn new(pool: PgPool) -> (Self, Command<Message>) {
+        (
+            Self {
+                pool,
+                current_page: Page::Dashboard,
+            },
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
         String::from("Asocial")
     }
 
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::NavigateTo(page) => {
                 self.current_page = page;
+                Command::none()
             }
         }
     }
