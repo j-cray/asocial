@@ -50,6 +50,7 @@ pub struct JobPayload {
     pub platform_name: String,
     pub credentials: sqlx::types::Json<serde_json::Value>,
     pub api_url: Option<String>,
+    pub media_paths: Option<Vec<String>>,
 }
 
 pub async fn fetch_job_details(pool: PgPool, job_id: Uuid) -> Result<JobPayload, String> {
@@ -60,7 +61,8 @@ pub async fn fetch_job_details(pool: PgPool, job_id: Uuid) -> Result<JobPayload,
             p.content as content,
             pl.name as platform_name,
             pl.credentials as credentials,
-            pl.api_url as api_url
+            pl.api_url as api_url,
+            p.media_paths as media_paths
         FROM jobs j
         JOIN posts p ON j.post_id = p.id
         JOIN platforms pl ON j.platform_id = pl.id

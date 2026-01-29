@@ -175,9 +175,11 @@ impl Application for AsocialApp {
                 match msg {
                     composer::Message::SchedulePressed => {
                         let content = self.composer.content().to_string();
+                        let media_paths = self.composer.media_paths();
+                        let platforms = self.composer.enabled_platforms();
                         let pool = self.pool.clone();
                         
-                        println!("Scheduling post: {}", content);
+                        println!("Scheduling post: {} with media: {:?} to platforms: {:?}", content, media_paths, platforms);
                         self.composer.clear();
 
                         Command::perform(
@@ -188,31 +190,36 @@ impl Application for AsocialApp {
                                 let user_id = user_id_row.0;
 
                                 // 2. Create Post (Scheduled)
-                                let post_id_row: (Uuid,) = sqlx::query_as("INSERT INTO posts (content, user_id, status) VALUES ($1, $2, 'scheduled') RETURNING id")
+                                let post_id_row: (Uuid,) = sqlx::query_as("INSERT INTO posts (content, user_id, status, media_paths) VALUES ($1, $2, 'scheduled', $3) RETURNING id")
                                     .bind(&content)
                                     .bind(user_id)
+                                    .bind(&media_paths)
                                     .fetch_one(&pool).await.map_err(|e| e.to_string())?;
                                 let post_id = post_id_row.0;
 
-                                // 3. Create Platform
-                                let platform_id_row: (Uuid,) = sqlx::query_as("INSERT INTO platforms (name, user_id, credentials) VALUES ('dummy_platform', $1, '{}') ON CONFLICT DO NOTHING RETURNING id") 
-                                     .bind(user_id)
-                                    .fetch_one(&pool).await.map_err(|e| e.to_string())?; 
-                                let platform_id = platform_id_row.0;
-
-                                // 4. Create Job
-                                let job_id_row: (Uuid,) = sqlx::query_as("INSERT INTO jobs (post_id, platform_id, scheduled_for, status) VALUES ($1, $2, NOW(), 'pending') RETURNING id")
-                                    .bind(post_id)
-                                    .bind(platform_id)
-                                    .fetch_one(&pool).await.map_err(|e| e.to_string())?;
+                                for platform_name in platforms {
+                                     // 3. Create Platform (Ensure exists)
+                                    let platform_id_row: (Uuid,) = sqlx::query_as("INSERT INTO platforms (name, user_id, credentials) VALUES ($1, $2, '{}') ON CONFLICT (name, user_id) DO UPDATE SET name=EXCLUDED.name RETURNING id") 
+                                         .bind(&platform_name)
+                                         .bind(user_id)
+                                        .fetch_one(&pool).await.map_err(|e| e.to_string())?; 
+                                    let platform_id = platform_id_row.0;
+    
+                                    // 4. Create Job
+                                    let _job_id_row: (Uuid,) = sqlx::query_as("INSERT INTO jobs (post_id, platform_id, scheduled_for, status) VALUES ($1, $2, NOW(), 'pending') RETURNING id")
+                                        .bind(post_id)
+                                        .bind(platform_id)
+                                        .fetch_one(&pool).await.map_err(|e| e.to_string())?;
+                                }
                                 
-                                Ok(job_id_row.0)
+                                Ok(post_id)
                             },
                             Message::JobScheduled
                         )
                     }
                     composer::Message::SaveDraftPressed => {
                         let content = self.composer.content().to_string();
+                        let media_paths = self.composer.media_paths();
                         let pool = self.pool.clone();
                         
                         println!("Saving draft: {}", content);
@@ -226,23 +233,23 @@ impl Application for AsocialApp {
                                 let user_id = user_id_row.0;
 
                                 // 2. Create Post (Draft)
-                                let _post_id_row: (Uuid,) = sqlx::query_as("INSERT INTO posts (content, user_id, status) VALUES ($1, $2, 'draft') RETURNING id")
+                                let _post_id_row: (Uuid,) = sqlx::query_as("INSERT INTO posts (content, user_id, status, media_paths) VALUES ($1, $2, 'draft', $3) RETURNING id")
                                     .bind(&content)
                                     .bind(user_id)
+                                    .bind(&media_paths)
                                     .fetch_one(&pool).await.map_err(|e| e.to_string())?;
 
                                 // No job created for drafts
-                                Ok(Uuid::nil()) // Return dummy UUID or handle differently. Uuid::nil() is 0000...
+                                Ok(Uuid::nil()) 
                             },
                             |res| match res {
-                                Ok(_) => Message::JobScheduled(Ok(Uuid::nil())), // Re-using message for simplicity, or add new one
+                                Ok(_) => Message::JobScheduled(Ok(Uuid::nil())), 
                                 Err(e) => Message::JobScheduled(Err(e)),
                             }
                         )
                     }
                     _ => {
-                        self.composer.update(msg);
-                        Command::none()
+                        self.composer.update(msg).map(Message::Composer)
                     }
                 }
             }

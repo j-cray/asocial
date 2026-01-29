@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.12", features = ["tokio", "debug"] } # Using 0.12 stable for now
+iced = { version = "0.12", features = ["tokio", "debug", "image"] } # Using 0.12 stable for now
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 sqlx = { version = "0.7", features = ["runtime-tokio", "tls-native-tls", "postgres", "uuid", "time", "json"] }
@@ -13,3 +13,4 @@ time = { version = "0.3", features = ["macros", "formatting", "parsing", "serde"
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 serde_json = "1.0"
 dotenv = "0.15"
+rfd = "0.17.2"
