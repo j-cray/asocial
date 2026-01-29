@@ -17,6 +17,9 @@ use integrations::mastodon::MastodonClient;
 mod theme;
 use theme::{App, Button, Container};
 
+mod settings;
+use settings::{Settings as AppSettings, ThemeMode};
+
 #[tokio::main]
 pub async fn main() -> iced::Result {
     dotenv::dotenv().ok();
@@ -39,6 +42,7 @@ struct AsocialApp {
     current_page: Page,
     recent_jobs: Vec<String>,
     composer: Composer,
+    settings: AppSettings,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +59,9 @@ enum Message {
     Tick(()),
     JobPolled(Result<Option<Job>, String>),
     Composer(composer::Message),
+    Settings(settings::Message),
     JobScheduled(Result<Uuid, String>),
+    AccountsSaved(Result<(), String>),
 }
 
 impl Application for AsocialApp {
@@ -71,6 +77,7 @@ impl Application for AsocialApp {
                 current_page: Page::Dashboard,
                 recent_jobs: Vec::new(),
                 composer: Composer::new(),
+                settings: AppSettings::new(),
             },
             Command::none(),
         )
@@ -93,7 +100,8 @@ impl Application for AsocialApp {
                 )
             }
             Message::JobPolled(result) => {
-                match result {
+                // ... (Keep existing implementation)
+                 match result {
                     Ok(Some(job)) => {
                         let msg = format!("Processing Job: {}", job.id);
                         println!("{}", msg);
@@ -113,9 +121,6 @@ impl Application for AsocialApp {
 
                                 match payload.platform_name.as_str() {
                                     "mastodon" | "test_platform" | "dummy_platform" => {
-                                        // ... existing mastodon logic ...
-                                        // (truncated for brevity in actual replace, I will keep context)
-                                        // TODO: Extract real creds from JSON. For MVP stubbing if empty.
                                         let base_url = payload.api_url.unwrap_or_else(|| "https://mastodon.social".to_string());
                                         let token = payload.credentials.0.get("access_token")
                                             .and_then(|v: &serde_json::Value| v.as_str())
@@ -123,8 +128,6 @@ impl Application for AsocialApp {
                                             .to_string();
 
                                         let client = MastodonClient::new(base_url, token);
-                                        // In a real scenario, we'd check if token is dummy and fail or log.
-                                        // For MVP, we try to post. If it fails (401), we log it.
                                         match client.post_status(&payload.content).await {
                                             Ok(_) => Ok("Posted to Mastodon".to_string()),
                                             Err(e) => Err(format!("Mastodon Error: {}", e))
@@ -141,7 +144,6 @@ impl Application for AsocialApp {
                                             .to_string();
                                         
                                         let mut client = integrations::bluesky::BlueskyClient::new(identifier, password);
-                                        // Try login first
                                         match client.login().await {
                                             Ok(_) => {
                                                 match client.post_record(&payload.content).await {
@@ -172,9 +174,10 @@ impl Application for AsocialApp {
                 }
             }
             Message::Composer(msg) => {
+                // ... (Keep existing)
                 match msg {
                     composer::Message::SchedulePressed => {
-                        let content = self.composer.content().to_string();
+                         let content = self.composer.content().to_string();
                         let media_paths = self.composer.media_paths();
                         let platforms = self.composer.enabled_platforms();
                         let pool = self.pool.clone();
@@ -199,6 +202,9 @@ impl Application for AsocialApp {
 
                                 for platform_name in platforms {
                                      // 3. Create Platform (Ensure exists)
+                                     // NOTE: We should ideally link to existing platform ID if creds are set.
+                                     // For MVP, we upsert platform name, but creds might be overwritten if we provided them here.
+                                     // Since composer defaults don't require creds input, we skip creds update here.
                                     let platform_id_row: (Uuid,) = sqlx::query_as("INSERT INTO platforms (name, user_id, credentials) VALUES ($1, $2, '{}') ON CONFLICT (name, user_id) DO UPDATE SET name=EXCLUDED.name RETURNING id") 
                                          .bind(&platform_name)
                                          .bind(user_id)
@@ -218,7 +224,7 @@ impl Application for AsocialApp {
                         )
                     }
                     composer::Message::SaveDraftPressed => {
-                        let content = self.composer.content().to_string();
+                         let content = self.composer.content().to_string();
                         let media_paths = self.composer.media_paths();
                         let pool = self.pool.clone();
                         
@@ -257,6 +263,63 @@ impl Application for AsocialApp {
                 match result {
                     Ok(id) => println!("Job scheduled successfully: {}", id),
                     Err(e) => println!("Failed to schedule job: {}", e),
+                }
+                Command::none()
+            }
+            Message::Settings(msg) => {
+                match msg {
+                    settings::Message::SaveAccountsPressed => {
+                        let pool = self.pool.clone();
+                        let (mastodon_url, mastodon_token) = self.settings.mastodon_creds();
+                        let (bluesky_id, bluesky_pass) = self.settings.bluesky_creds();
+
+                        println!("Saving accounts...");
+
+                        Command::perform(
+                            async move {
+                                // 1. Ensure User
+                                let user_id_row: (Uuid,) = sqlx::query_as("INSERT INTO users (username) VALUES ('default_user') ON CONFLICT (username) DO UPDATE SET username=EXCLUDED.username RETURNING id")
+                                    .fetch_one(&pool).await.map_err(|e| e.to_string())?;
+                                let user_id = user_id_row.0;
+
+                                // 2. Upsert Mastodon
+                                if !mastodon_url.is_empty() {
+                                    let creds = serde_json::json!({
+                                        "access_token": mastodon_token
+                                    });
+                                    sqlx::query("INSERT INTO platforms (name, user_id, api_url, credentials) VALUES ('mastodon', $1, $2, $3) ON CONFLICT (name, user_id) DO UPDATE SET api_url=EXCLUDED.api_url, credentials=EXCLUDED.credentials")
+                                        .bind(user_id)
+                                        .bind(mastodon_url)
+                                        .bind(creds)
+                                        .execute(&pool).await.map_err(|e| e.to_string())?;
+                                }
+
+                                // 3. Upsert Bluesky
+                                if !bluesky_id.is_empty() {
+                                    let creds = serde_json::json!({
+                                        "identifier": bluesky_id,
+                                        "password": bluesky_pass
+                                    });
+                                    sqlx::query("INSERT INTO platforms (name, user_id, credentials) VALUES ('bluesky', $1, $2) ON CONFLICT (name, user_id) DO UPDATE SET credentials=EXCLUDED.credentials")
+                                        .bind(user_id)
+                                        .bind(creds)
+                                        .execute(&pool).await.map_err(|e| e.to_string())?;
+                                }
+
+                                Ok(())
+                            },
+                            Message::AccountsSaved
+                        )
+                    }
+                    _ => {
+                        self.settings.update(msg).map(Message::Settings)
+                    }
+                }
+            }
+            Message::AccountsSaved(res) => {
+                match res {
+                    Ok(_) => println!("Accounts saved successfully."),
+                    Err(e) => println!("Failed to save accounts: {}", e),
                 }
                 Command::none()
             }
@@ -323,7 +386,13 @@ impl Application for AsocialApp {
                 ].spacing(20).into()
             },
             Page::Schedule => text("Schedule View").size(32).style(theme::ACCENT).into(),
-            Page::Settings => text("Settings").size(32).style(theme::ACCENT).into(),
+            Page::Settings => {
+                let settings_view = self.settings.view().map(Message::Settings);
+                column![
+                     text("Settings").size(32).style(theme::ACCENT),
+                     settings_view
+                ].spacing(20).into()
+            },
         };
 
         let content = container(content_view)
@@ -336,7 +405,11 @@ impl Application for AsocialApp {
     }
 
     fn theme(&self) -> Theme {
-        Theme::Dark
+        match self.settings.theme_mode {
+            ThemeMode::Light => Theme::Light,
+            ThemeMode::Dark => Theme::Dark,
+            ThemeMode::System => Theme::Dark, // Default to Dark if system not detected (iced doesn't expose system pref neatly yet in 0.12 without trait)
+        }
     }
 
 
