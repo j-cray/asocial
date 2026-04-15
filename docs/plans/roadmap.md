@@ -3,11 +3,12 @@
 This document outlines the detailed roadmap, broken into phases and modular subtasks, for building **aSocial** - a feature-rich, high-performance, and secure self-hostable Rust application for social media management.
 
 ## Project Core Goals
-*   **Architecture**: High-performance Rust backend (Axum) with a WASM frontend (Leptos) and secure PostgreSQL storage.
-*   **Aesthetics**: Slick modern UI featuring "Premium Dark/Glassmorphism", micro-animations, and responsive layouts.
-*   **Integrations**: Support for Bluesky, Pixelfed, Instagram, Facebook, LinkedIn, X, and TikTok.
-*   **Capabilities**: Unified post composition, cross-platform scheduling, and deep analytics tools.
-*   **Self-Hostable**: Easy Docker/Compose deployment and rigorous data privacy boundaries.
+
+- **Architecture**: High-performance Rust backend (Axum) with a WASM frontend (Leptos) and secure PostgreSQL storage.
+- **Aesthetics**: Slick modern UI featuring "Premium Dark/Glassmorphism", micro-animations, and responsive layouts.
+- **Integrations**: Support for Bluesky, Pixelfed, Instagram, Facebook, LinkedIn, X, and TikTok.
+- **Capabilities**: Unified post composition, cross-platform scheduling, and deep analytics tools.
+- **Self-Hostable**: Easy Docker/Compose deployment and rigorous data privacy boundaries.
 
 ---
 

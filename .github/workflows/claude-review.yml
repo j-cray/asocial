@@ -1,0 +1,24 @@
+name: Claude Code Review
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude_review:
+    name: Anthropic Claude Code Review
+    # Trigger only if this is a Pull Request comment containing "@claude"
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the Pull Request branch
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-security-review@main
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
